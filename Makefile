@@ -234,9 +234,110 @@ endif
 
 ## console-plugin
 CONSOLEPLUGIN_VERSION ?= latest
-consoleplugin_version_is_semantic := $(call is_semantic_versi
-[... 4189 bytes omitted ...]
-ocally if necessary.
+consoleplugin_version_is_semantic := $(call is_semantic_version,$(CONSOLEPLUGIN_VERSION))
+
+ifeq (latest,$(CONSOLEPLUGIN_VERSION))
+RELATED_IMAGE_CONSOLE_PLUGIN_LATEST ?= quay.io/kuadrant/console-plugin:latest
+else ifeq (true,$(consoleplugin_version_is_semantic))
+RELATED_IMAGE_CONSOLE_PLUGIN_LATEST ?= quay.io/kuadrant/console-plugin:v$(CONSOLEPLUGIN_VERSION)
+else
+RELATED_IMAGE_CONSOLE_PLUGIN_LATEST ?= quay.io/kuadrant/console-plugin:$(CONSOLEPLUGIN_VERSION)
+endif
+
+RELATED_IMAGE_CONSOLE_PLUGIN_SDK1 ?= quay.io/kuadrant/console-plugin:v0.6.0
+RELATED_IMAGE_CONSOLE_PLUGIN_PF5 ?= quay.io/kuadrant/console-plugin:v0.1.5-2
+
+## gatewayapi-provider
+GATEWAYAPI_PROVIDER ?= istio
+
+EXTENSIONS_DIR ?= /extensions
+EXTENSIONS_IMG ?= quay.io/kuadrant/extensions:dev
+
+all: build
+
+##@ General
+
+# The help target prints out all targets with their descriptions organized
+# beneath their categories. The categories are represented by '##@' and the
+# target descriptions by '##'. The awk commands is responsible for reading the
+# entire set of makefiles included in this invocation, looking for lines of the
+# file as xyz: ## something, and then pretty-format the target and help. Then,
+# if there's a line with ##@ something, that gets pretty-printed as a category.
+# More info on the usage of ANSI control characters for terminal formatting:
+# https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
+# More info on the awk command:
+# http://linuxcommand.org/lc3_adv_awk.php
+
+help: ## Display this help.
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+##@ Tools
+
+## Tool Binaries
+OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
+CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
+KUSTOMIZE ?= $(LOCALBIN)/kustomize
+YQ ?= $(LOCALBIN)/yq
+OPM ?= $(LOCALBIN)/opm
+KIND ?= $(LOCALBIN)/kind
+ACT ?= $(LOCALBIN)/act
+GINKGO ?= $(LOCALBIN)/ginkgo
+HELM ?= $(LOCALBIN)/helm
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
+RATCHET ?= $(LOCALBIN)/ratchet
+
+## Tool Versions
+OPERATOR_SDK_VERSION ?= v1.42.3
+CONTROLLER_GEN_VERSION ?= v0.19.0
+KUSTOMIZE_VERSION ?= v4.5.5
+YQ_VERSION ?= v4.34.2
+OPM_VERSION ?= v1.48.0
+KIND_VERSION ?= v0.31.0
+ACT_VERSION ?= latest
+HELM_VERSION ?= v3.15.0
+GOLANGCI_LINT_VERSION ?= v2.12.2
+RATCHET_VERSION ?= v0.11.4
+
+## Versioned Binaries
+OPERATOR_SDK_V_BINARY := $(LOCALBIN)/operator-sdk-$(OPERATOR_SDK_VERSION)
+CONTROLLER_GEN_V_BINARY := $(LOCALBIN)/controller-gen-$(CONTROLLER_GEN_VERSION)
+KUSTOMIZE_V_BINARY := $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
+YQ_V_BINARY := $(LOCALBIN)/yq-$(YQ_VERSION)
+OPM_V_BINARY := $(LOCALBIN)/opm-$(OPM_VERSION)
+KIND_V_BINARY := $(LOCALBIN)/kind-$(KIND_VERSION)
+ACT_V_BINARY := $(LOCALBIN)/act-$(ACT_VERSION)
+HELM_V_BINARY := $(LOCALBIN)/helm-$(HELM_VERSION)
+GOLANGCI_LINT_V_BINARY := $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+RATCHET_V_BINARY := $(LOCALBIN)/ratchet-$(RATCHET_VERSION)
+
+.PHONY: operator-sdk
+operator-sdk: $(OPERATOR_SDK_V_BINARY) ## Download operator-sdk locally if necessary.
+$(OPERATOR_SDK_V_BINARY): $(LOCALBIN)
+	@./utils/install-operator-sdk.sh $(OPERATOR_SDK)-$(OPERATOR_SDK_VERSION) $(OPERATOR_SDK_VERSION)
+	@ln -sf $(shell basename $(OPERATOR_SDK))-$(OPERATOR_SDK_VERSION) $(OPERATOR_SDK)
+
+.PHONY: controller-gen
+controller-gen: $(CONTROLLER_GEN_V_BINARY) ## Download controller-gen locally if necessary.
+$(CONTROLLER_GEN_V_BINARY): $(LOCALBIN)
+	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_GEN_VERSION))
+
+.PHONY: kustomize
+kustomize: $(KUSTOMIZE_V_BINARY) ## Download kustomize locally if necessary.
+$(KUSTOMIZE_V_BINARY): $(LOCALBIN)
+	$(call go-install-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v4,$(KUSTOMIZE_VERSION))
+
+.PHONY: yq
+yq: $(YQ_V_BINARY) ## Download yq locally if necessary.
+$(YQ_V_BINARY): $(LOCALBIN)
+	$(call go-install-tool,$(YQ),github.com/mikefarah/yq/v4,$(YQ_VERSION))
+
+.PHONY: opm
+opm: $(OPM_V_BINARY) ## Download opm locally if necessary.
+$(OPM_V_BINARY): $(LOCALBIN)
+	$(call go-install-tool,$(OPM),github.com/operator-framework/operator-registry/cmd/opm,$(OPM_VERSION))
+
+.PHONY: kind
+kind: $(KIND_V_BINARY) ## Download kind locally if necessary.
 $(KIND_V_BINARY): $(LOCALBIN)
 	$(call go-install-tool,$(KIND),sigs.k8s.io/kind,$(KIND_VERSION))
 
