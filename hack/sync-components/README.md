@@ -1,30 +1,32 @@
 # sync-components
 
-CLI tool for syncing upstream component Helm charts into `component-charts/`. Downloads charts as-is from GitHub, pins the commit SHA in `component-charts/sync.yaml`, and outputs JSON results.
+CLI tool for reconciling upstream component Helm charts into `component-charts/`. By default it downloads the commits pinned in `sync.yaml`; explicit advance operations update the pins from tracked branch HEADs. Outputs JSON results.
 
 ## Usage
 
 ```bash
 # Via make targets
-make sync-component-charts                          # sync all components
-make sync-component-chart COMPONENT=dns-operator    # sync one component
+make sync-component-charts                          # reconcile all pinned components
+make sync-component-chart COMPONENT=dns-operator    # reconcile one pinned component
+make advance-component-chart COMPONENT=dns-operator # advance one component to tracked HEAD
 
 # Direct invocation
 go run ./hack/sync-components/ sync --config component-charts/sync.yaml
 go run ./hack/sync-components/ sync --config component-charts/sync.yaml --component dns-operator
+go run ./hack/sync-components/ sync --config component-charts/sync.yaml --component dns-operator --follow-tracked-branch
 ```
 
 ## Subcommands
 
 ### sync
 
-Downloads charts from upstream repos and updates the `ref` in `sync.yaml` to the resolved commit SHA. Human-readable progress is written to stderr; JSON results are written to stdout.
+Downloads the charts at their pinned `ref` SHAs, replacing local chart content when it differs. The default operation is idempotent and leaves `ref` unchanged; it does not resolve `tracked-branch` HEAD. Pass `--follow-tracked-branch` to explicitly advance the pin to that branch HEAD and update `sync.yaml`. Human-readable progress is written to stderr; JSON results are written to stdout.
 
 ```bash
 go run ./hack/sync-components/ sync --config component-charts/sync.yaml --component dns-operator
 ```
 
-When the chart has been updated:
+When the chart has been updated with `--follow-tracked-branch`:
 ```text
 Syncing dns-operator from Kuadrant/dns-operator@cda782a
   Previous: abc123def45

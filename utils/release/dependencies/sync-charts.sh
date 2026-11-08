@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Update component-charts/sync.yaml tracked-branches from release.yaml versions,
-# then sync component Helm charts from upstream repos.
+# Validate upstream release branches, update tracked-branch mappings from
+# release.yaml versions, then reconcile charts to their pinned refs.
 
 set -euo pipefail
 
@@ -44,6 +44,39 @@ if [[ ${#errors[@]} -gt 0 ]]; then
   exit 1
 fi
 
+# Preflight all derived upstream branches before changing sync.yaml. A
+# missing branch must not leave earlier components partially updated.
+while IFS= read -r component; do
+  version=$(yq ".dependencies.\"$component\" // \"\"" "$RELEASE_FILE")
+  if [[ -z "$version" || "$version" == "0.0.0" ]]; then
+    continue
+  fi
+
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    errors+=("Component '$component' has non-semver release version '$version'")
+    continue
+  fi
+
+  expected_branch="release-${version%.*}"
+  upstream_repo=$(yq ".components.\"$component\".repo // \"\"" "$SYNC_FILE")
+  if [[ -z "$upstream_repo" ]]; then
+    errors+=("Component '$component' has no upstream repo in $SYNC_FILE")
+    continue
+  fi
+
+  if ! git ls-remote --quiet --exit-code --heads "https://github.com/${upstream_repo}.git" "refs/heads/${expected_branch}" >/dev/null; then
+    errors+=("Cannot confirm upstream branch '$expected_branch' for '$component' in '$upstream_repo'")
+  fi
+done < <(yq '.components | keys | .[]' "$SYNC_FILE")
+
+if [[ ${#errors[@]} -gt 0 ]]; then
+  echo "ERROR: release chart branch validation failed; sync.yaml was not modified:" >&2
+  for err in "${errors[@]}"; do
+    echo "  $err" >&2
+  done
+  exit 1
+fi
+
 # Update tracked-branches in sync.yaml based on release.yaml versions
 while IFS= read -r component; do
   version=$(yq ".dependencies.\"$component\" // \"\"" "$RELEASE_FILE")
@@ -78,5 +111,5 @@ while IFS='=' read -r dep version; do
 done < <(yq '.dependencies | to_entries | .[] | .key + "=" + .value' "$RELEASE_FILE")
 
 echo ""
-echo "Syncing component charts..."
+echo "Reconciling component charts to pinned refs..."
 make -C "$env" sync-component-charts

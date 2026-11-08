@@ -5,8 +5,8 @@
 # Fields:
 #   repo:            GitHub org/repo (e.g. Kuadrant/dns-operator)
 #   chart-path:      Path to Helm chart within the upstream repo
-#   tracked-branch:  Upstream branch this kuadrant-operator branch follows (for dispatch matching)
-#   ref:             Pinned commit SHA (managed by the sync tool, do not edit manually)
+#   tracked-branch:  Upstream branch used for dispatch matching and explicit ref advancement
+#   ref:             Pinned commit SHA (reconciled by default; updated only in advance mode)
 #   auto-merge:      (Optional) If true, sync PRs auto-merge when all branch protection requirements are met (CI, approvals, etc.)
 
 components:

@@ -29,7 +29,7 @@ func usage(exitCode int) {
 	fmt.Fprintf(os.Stderr, `Usage: sync-components <command> [flags]
 
 Commands:
-  sync           Sync component Helm charts from upstream repos
+  sync           Reconcile pinned component charts; optionally advance tracked branches
   find-targets   Find branches tracking a given component ref
   query          Output tracking info for a component as JSON
 

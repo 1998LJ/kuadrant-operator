@@ -1,6 +1,6 @@
-// cmd_sync implements the "sync" subcommand: resolves each component's
-// tracked branch to a commit SHA, downloads the chart at that SHA, and
-// updates the ref in sync.yaml. Outputs JSON results to stdout.
+// cmd_sync reconciles component charts to pinned commit SHAs by default.
+// The explicit --follow-tracked-branch mode advances the pin to the upstream
+// tracked branch HEAD. Outputs JSON results to stdout.
 package main
 
 import (
@@ -26,6 +26,7 @@ func cmdSync(args []string) {
 	fs := flag.NewFlagSet("sync", flag.ExitOnError)
 	configPath := fs.String("config", "component-charts/sync.yaml", "Path to sync config file")
 	componentName := fs.String("component", "", "Sync a specific component (default: all)")
+	followTrackedBranch := fs.Bool("follow-tracked-branch", false, "Advance component refs to tracked branch HEAD instead of reconciling pinned refs")
 	fs.Parse(args)
 
 	cfg, err := loadConfig(*configPath)
@@ -54,7 +55,7 @@ func cmdSync(args []string) {
 	failed := false
 
 	for _, name := range names {
-		result := syncOne(name, components[name], *configPath)
+		result := syncOne(name, components[name], *configPath, *followTrackedBranch)
 		results[name] = result
 		if result.Status == "error" {
 			failed = true
@@ -73,13 +74,24 @@ func cmdSync(args []string) {
 	}
 }
 
-func syncOne(name string, c component, configPath string) syncResult {
+func syncRef(c component, followTrackedBranch bool) (string, error) {
+	if !followTrackedBranch {
+		return c.Ref, nil
+	}
+	if c.TrackedBranch == "" {
+		return "", fmt.Errorf("tracked-branch is required when advancing a component")
+	}
+	return c.TrackedBranch, nil
+}
+
+func syncOne(name string, c component, configPath string, followTrackedBranch bool) syncResult {
 	outputBase := filepath.Dir(configPath)
 	chartDir := filepath.Join(outputBase, name)
 
-	resolveRef := c.Ref
-	if c.TrackedBranch != "" {
-		resolveRef = c.TrackedBranch
+	resolveRef, err := syncRef(c, followTrackedBranch)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error resolving %s: %v\n", name, err)
+		return syncResult{Repo: c.Repo, OldRef: c.Ref, Status: "error"}
 	}
 
 	sha, err := resolveCommitSHA(c.Repo, resolveRef)
@@ -88,24 +100,16 @@ func syncOne(name string, c component, configPath string) syncResult {
 		return syncResult{Repo: c.Repo, OldRef: c.Ref, Status: "error"}
 	}
 
-	// Check if chart directory exists before declaring up-to-date
-	chartExists := false
-	if stat, err := os.Stat(chartDir); err == nil && stat.IsDir() {
-		chartExists = true
-	}
-
-	if sha == c.Ref && chartExists {
-		fmt.Fprintf(os.Stderr, "Syncing %s from %s@%s\n", name, c.Repo, sha[:12])
-		fmt.Fprintf(os.Stderr, "  No changes (already at %s).\n", sha[:12])
-		return syncResult{Repo: c.Repo, OldRef: c.Ref, NewRef: sha, Changed: false, Status: "up-to-date"}
-	}
-
 	fmt.Fprintf(os.Stderr, "Syncing %s from %s@%s\n", name, c.Repo, sha[:12])
 	if c.Ref != "" && c.Ref != c.TrackedBranch {
 		fmt.Fprintf(os.Stderr, "  Previous: %s\n", c.Ref[:min(12, len(c.Ref))])
 	}
 
-	oldHash, _ := hashDir(chartDir) // tolerate missing chart dir on first sync
+	oldHash, err := hashDir(chartDir)
+	if err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Error hashing existing chart for %s: %v\n", name, err)
+		return syncResult{Repo: c.Repo, OldRef: c.Ref, NewRef: sha, Status: "error"}
+	}
 
 	tmpDir, err := os.MkdirTemp(outputBase, ".sync-component-*")
 	if err != nil {
@@ -128,6 +132,10 @@ func syncOne(name string, c component, configPath string) syncResult {
 
 	if oldHash == newHash {
 		os.RemoveAll(tmpDir)
+		if c.Ref == sha {
+			fmt.Fprintf(os.Stderr, "  No changes (already at %s).\n", sha[:12])
+			return syncResult{Repo: c.Repo, OldRef: c.Ref, NewRef: sha, Changed: false, Status: "up-to-date"}
+		}
 		if err := updateRef(configPath, name, sha); err != nil {
 			fmt.Fprintf(os.Stderr, "Error updating ref for %s: %v\n", name, err)
 			return syncResult{Repo: c.Repo, OldRef: c.Ref, NewRef: sha, Status: "error"}
