@@ -83,6 +83,28 @@ func getDefaultBranch(repo string) (string, error) {
 	return repoInfo.DefaultBranch, nil
 }
 
+// getRepoBranches returns all branch names, including repositories with more
+// than one page of branches. GitHub returns at most 100 per request.
+func getRepoBranches(repo string) ([]string, error) {
+	branches := []string{}
+	for page := 1; ; page++ {
+		var entries []struct {
+			Name string `json:"name"`
+		}
+		endpoint := fmt.Sprintf("https://api.github.com/repos/%s/branches?per_page=100&page=%d", repo, page)
+		if err := githubGet(endpoint, &entries); err != nil {
+			return nil, fmt.Errorf("listing branches on page %d: %w", page, err)
+		}
+		for _, entry := range entries {
+			branches = append(branches, entry.Name)
+		}
+		if len(entries) < 100 {
+			break
+		}
+	}
+	return branches, nil
+}
+
 type ghAPIError struct {
 	StatusCode int
 	URL        string

@@ -72,6 +72,12 @@ go run ./hack/sync-components/ find-targets \
 
 Returns `[]` when no branches track the given component at that source branch.
 
+`find-targets` checks the default branch and branches named `release-X.Y`
+(e.g. `release-1.6`). Each eligible branch must contain
+`component-charts/sync.yaml`; branches without it are skipped. The returned
+`auto-merge` flag comes from each target branch's own configuration, so
+release-branch sync PRs can remain subject to manual approval.
+
 ### query
 
 Outputs the tracking configuration for a single component as JSON.
